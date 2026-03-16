@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: prodai
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install && npm run build && cp node_modules/sql.js/dist/sql-wasm.wasm dist/
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: JWT_SECRET
+        sync: false

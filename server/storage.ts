@@ -171,10 +171,11 @@ class SqliteStorage implements IStorage {
     // WASM fajl keresese: eloszor az exe mellol, aztan node_modules-bol
     const exeDir = path.dirname(process.execPath);
     const candidates = [
+      path.join(process.cwd(), "dist", "sql-wasm.wasm"),
+      path.join(process.cwd(), "sql-wasm.wasm"),
+      path.join(process.cwd(), "node_modules", "sql.js", "dist", "sql-wasm.wasm"),
       path.join(exeDir, "sql-wasm.wasm"),
       path.join(exeDir, "node_modules", "sql.js", "dist", "sql-wasm.wasm"),
-      path.join(process.cwd(), "node_modules", "sql.js", "dist", "sql-wasm.wasm"),
-      path.join(process.cwd(), "sql-wasm.wasm"),
     ];
     let wasmPath = "";
     for (const c of candidates) {
