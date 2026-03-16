@@ -140,6 +140,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const company = await storage.getCompanyById(user.companyId);
       const token = generateToken({ userId: user.id, companyId: user.companyId, email: user.email, role: user.role });
+      // Last login frissítése
+      storage.updateLastLogin(user.id).catch(() => {});
       res.json({
         token,
         user: { id: user.id, name: user.name, email: user.email, role: user.role },

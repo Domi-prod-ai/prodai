@@ -22,6 +22,7 @@ import InviteAcceptPage from "./pages/InviteAcceptPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AdminPage from "./pages/AdminPage";
+import FloorViewPage from "./pages/FloorViewPage";
 import WelcomeModal from "./components/WelcomeModal";
 import NotFound from "./pages/not-found";
 
@@ -75,6 +76,7 @@ function AppLayout({ onLogout, onAdmin }: { onLogout: () => void; onAdmin: () =>
             <Route path="/maintenance" component={MaintenancePage} />
             <Route path="/reports" component={ReportsPage} />
             <Route path="/team" component={TeamPage} />
+            <Route path="/floor" component={FloorViewPage} />
             <Route component={NotFound} />
           </Switch>
         </main>

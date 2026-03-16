@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState, useRef, useCallback } from "react";
-import { Zap, RefreshCw, GripVertical, Clock, Info, X, Save } from "lucide-react";
+import { Zap, RefreshCw, GripVertical, Clock, Info, X, Save, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import type { Task, Machine, Order, Product } from "@shared/schema";
@@ -42,6 +42,86 @@ const STATUS_COLORS: Record<string, { bg: string; border: string; text: string }
 const STATUS_HU: Record<string, string> = {
   in_progress: "Folyamatban", planned: "Tervezett", done: "Kész", delayed: "Késedelmes",
 };
+
+function printGanttPDF(tasks: any[], machines: any[], orders: any[], products: any[]) {
+  const win = window.open("", "_blank");
+  if (!win) { alert("Engedélyezd a felugró ablakokat a PDF exporthoz!"); return; }
+  const now = new Date().toLocaleString("hu-HU");
+  const priorityLabel: Record<string, string> = { urgent: "Sürgős", high: "Magas", normal: "Normál", low: "Alacsony" };
+  const statusLabel: Record<string, string> = { planned: "Tervezett", in_progress: "Folyamatban", done: "Kész", delayed: "Késedelmes" };
+  const statusColor: Record<string, string> = { planned: "#3b82f6", in_progress: "#f59e0b", done: "#22c55e", delayed: "#ef4444" };
+
+  const rows = tasks.map(t => {
+    const machine = machines.find((m: any) => m.id === t.machineId);
+    const order = orders.find((o: any) => o.id === t.orderId);
+    const product = products.find((p: any) => p.id === t.productId);
+    const start = new Date(t.startTime);
+    const end = new Date(t.endTime);
+    const hours = ((end.getTime() - start.getTime()) / 3600000).toFixed(1);
+    const status = t.status || "planned";
+    return `<tr>
+      <td>${order?.orderNumber || "-"}</td>
+      <td>${product?.name || "-"}</td>
+      <td>${machine?.name || "-"}</td>
+      <td>${start.toLocaleString("hu-HU")}</td>
+      <td>${end.toLocaleString("hu-HU")}</td>
+      <td>${hours} h</td>
+      <td>${t.quantity} db</td>
+      <td><span style="background:${statusColor[status]}22;color:${statusColor[status]};padding:2px 8px;border-radius:4px;font-weight:600">${statusLabel[status] || status}</span></td>
+      <td>${order ? (priorityLabel[order.priority] || order.priority) : "-"}</td>
+    </tr>`;
+  }).join("");
+
+  const machineRows = machines.map((m: any) => {
+    const machineTasks = tasks.filter((t: any) => t.machineId === m.id);
+    const totalHours = machineTasks.reduce((acc: number, t: any) => {
+      const s = new Date(t.startTime); const e = new Date(t.endTime);
+      return acc + (e.getTime() - s.getTime()) / 3600000;
+    }, 0);
+    return `<tr><td>${m.name}</td><td>${m.type}</td><td>${machineTasks.length}</td><td>${totalHours.toFixed(1)} h</td><td>${m.utilization}%</td></tr>`;
+  }).join("");
+
+  win.document.write(`<!DOCTYPE html><html lang="hu"><head>
+    <meta charset="UTF-8"><title>Termelési Terv — ProdAI</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 32px; color: #1e293b; font-size: 12px; }
+      h1 { font-size: 20px; color: #1d4ed8; border-bottom: 2px solid #1d4ed8; padding-bottom: 8px; margin-bottom: 4px; }
+      .meta { color: #64748b; font-size: 11px; margin-bottom: 20px; }
+      h2 { font-size: 14px; margin: 24px 0 8px; color: #334155; border-left: 3px solid #1d4ed8; padding-left: 8px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+      th { background: #1d4ed8; color: white; padding: 7px 10px; text-align: left; font-size: 11px; }
+      td { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
+      tr:nth-child(even) td { background: #f8fafc; }
+      .summary { display: flex; gap: 24px; margin-bottom: 20px; }
+      .kpi { background: #f1f5f9; border-radius: 8px; padding: 12px 20px; text-align: center; }
+      .kpi-val { font-size: 24px; font-weight: bold; color: #1d4ed8; }
+      .kpi-label { font-size: 10px; color: #64748b; margin-top: 2px; }
+      @media print { body { margin: 16px; } }
+    </style>
+  </head><body>
+    <h1>Termelési Terv — ProdAI</h1>
+    <div class="meta">Generálva: ${now} · Összes feladat: ${tasks.length} · Gépek: ${machines.length}</div>
+    <div class="summary">
+      <div class="kpi"><div class="kpi-val">${tasks.length}</div><div class="kpi-label">Feladat</div></div>
+      <div class="kpi"><div class="kpi-val">${tasks.filter((t: any) => t.status === "in_progress").length}</div><div class="kpi-label">Folyamatban</div></div>
+      <div class="kpi"><div class="kpi-val">${tasks.filter((t: any) => t.status === "done").length}</div><div class="kpi-label">Kész</div></div>
+      <div class="kpi"><div class="kpi-val">${tasks.filter((t: any) => t.status === "delayed").length}</div><div class="kpi-label">Késedelmes</div></div>
+    </div>
+    <h2>Feladatok részletezése</h2>
+    <table>
+      <thead><tr><th>Rendelés</th><th>Termék</th><th>Gép</th><th>Kezdés</th><th>Befejezés</th><th>Idő</th><th>Mennyiség</th><th>Státusz</th><th>Prioritás</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#94a3b8">Nincs feladat</td></tr>'}</tbody>
+    </table>
+    <h2>Gép terhelés összesítő</h2>
+    <table>
+      <thead><tr><th>Gép neve</th><th>Típus</th><th>Feladatok</th><th>Összes idő</th><th>Kihasználtság</th></tr></thead>
+      <tbody>${machineRows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Nincs gép</td></tr>'}</tbody>
+    </table>
+    <div style="text-align:center;color:#94a3b8;font-size:10px;margin-top:32px">Generálva: ProdAI — ${now}</div>
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
+}
 
 export default function GanttPage() {
   const { toast } = useToast();
@@ -180,6 +260,15 @@ export default function GanttPage() {
               <Save size={12} className="animate-pulse" /> {pendingSaves.size} mentés folyamatban…
             </span>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => printGanttPDF(tasks, machines, orders, products)}
+            data-testid="btn-gantt-pdf"
+          >
+            <FileText size={14} /> PDF export
+          </Button>
           <Button
             onClick={() => autoPlan.mutate()}
             disabled={autoPlan.isPending}

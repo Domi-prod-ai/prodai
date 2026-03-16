@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, CalendarDays, ClipboardList, Cpu, Zap, PackageSearch, Package, HelpCircle, Settings, Wrench, CalendarClock, BarChart2, LogOut, ShieldCheck, Users } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ClipboardList, Cpu, Zap, PackageSearch, Package, HelpCircle, Settings, Wrench, CalendarClock, BarChart2, LogOut, ShieldCheck, Users, Factory } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 const navItems = [
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/maintenance", icon: CalendarClock, label: "Karbantartás" },
   { href: "/reports", icon: BarChart2, label: "Riportok" },
   { href: "/team", icon: Users, label: "Csapattagok" },
+  { href: "/floor", icon: Factory, label: "Gyárpadló nézet" },
 ];
 
 interface SidebarProps {

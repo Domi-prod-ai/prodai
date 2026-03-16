@@ -28,6 +28,7 @@ export interface User {
   name: string;
   role: string; // admin | user
   createdAt: string;
+  lastLogin: string;
 }
 
 export interface IStorage {
@@ -46,6 +47,7 @@ export interface IStorage {
   deleteUser(id: number): Promise<void>;
   updateUserRole(id: number, role: string): Promise<User>;
   resetUserPassword(id: number, passwordHash: string): Promise<void>;
+  updateLastLogin(userId: number): Promise<void>;
   getSystemStats(): Promise<{ companies: number; users: number; orders: number; products: number; machines: number; molds: number; }>;
 
   getProducts(companyId: number): Promise<Product[]>;
@@ -407,6 +409,11 @@ class SqliteStorage implements IStorage {
         expires_at TEXT NOT NULL
       );
     `);
+
+    // ── Migration: last_login oszlop hozzaadasa users tablahoz ──────────────
+    try {
+      this.run("ALTER TABLE users ADD COLUMN last_login TEXT DEFAULT ''");
+    } catch (_) { /* mar letezik */ }
   }
 
   private row2product(r: any): Product {
@@ -758,12 +765,15 @@ class SqliteStorage implements IStorage {
   async getUserByEmail(email: string): Promise<User | undefined> {
     const r = this.getOne("SELECT * FROM users WHERE LOWER(email)=LOWER(?)", [email]);
     if (!r) return undefined;
-    return { id: r.id, companyId: r.company_id, email: r.email, passwordHash: r.password_hash, name: r.name, role: r.role, createdAt: r.created_at };
+    return { id: r.id, companyId: r.company_id, email: r.email, passwordHash: r.password_hash, name: r.name, role: r.role, createdAt: r.created_at, lastLogin: r.last_login || "" };
   }
   async getUserById(id: number): Promise<User | undefined> {
     const r = this.getOne("SELECT * FROM users WHERE id=?", [id]);
     if (!r) return undefined;
-    return { id: r.id, companyId: r.company_id, email: r.email, passwordHash: r.password_hash, name: r.name, role: r.role, createdAt: r.created_at };
+    return { id: r.id, companyId: r.company_id, email: r.email, passwordHash: r.password_hash, name: r.name, role: r.role, createdAt: r.created_at, lastLogin: r.last_login || "" };
+  }
+  async updateLastLogin(userId: number): Promise<void> {
+    this.run("UPDATE users SET last_login=? WHERE id=?", [new Date().toISOString(), userId]);
   }
 
   // ── Admin ──
@@ -771,7 +781,7 @@ class SqliteStorage implements IStorage {
     return this.getAll("SELECT * FROM companies ORDER BY id DESC").map((r: any) => ({ id: r.id, name: r.name, slug: r.slug, createdAt: r.created_at }));
   }
   async getAllUsers(): Promise<User[]> {
-    return this.getAll("SELECT * FROM users ORDER BY id DESC").map((r: any) => ({ id: r.id, companyId: r.company_id, email: r.email, passwordHash: r.password_hash, name: r.name, role: r.role, createdAt: r.created_at }));
+    return this.getAll("SELECT * FROM users ORDER BY id DESC").map((r: any) => ({ id: r.id, companyId: r.company_id, email: r.email, passwordHash: r.password_hash, name: r.name, role: r.role, createdAt: r.created_at, lastLogin: r.last_login || "" }));
   }
   async deleteCompany(id: number): Promise<void> {
     this.run("DELETE FROM users WHERE company_id=?", [id]);
