@@ -110,7 +110,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Határidő figyelmeztetések küldése (manuális trigger)
   app.post("/api/notify/deadline", requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const orders = await storage.getOrders();
+    const orders = await storage.getOrders(user.companyId);
     const dbUser = await storage.getUserById(user.userId);
     const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000);
     const urgent = orders.filter(o => {
@@ -163,15 +163,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
 
+  // ─── Globális auth middleware minden védett route-ra ──────────────────────
+  app.use([
+    "/api/products", "/api/machines", "/api/orders", "/api/tasks",
+    "/api/ai-suggestions", "/api/molds", "/api/maintenance",
+    "/api/ai", "/api/production-plan", "/api/import",
+    "/api/settings", "/api/reports"
+  ], requireAuth);
+
   // ─── Products ──────────────────────────────────────────────────────────────
-  app.get("/api/products", async (_req, res) => {
-    res.json(await storage.getProducts());
+  app.get("/api/products", async (req, res) => {
+    const user = (req as any).user;
+    res.json(await storage.getProducts(user.companyId));
   });
 
   app.get("/api/products/search", async (req, res) => {
     const sku = String(req.query.sku || "").trim();
     if (!sku) return res.status(400).json({ error: "SKU megadása kötelező" });
-    const product = await storage.getProductBySku(sku);
+    const product = await storage.getProductBySku(sku, user.companyId);
     if (!product) return res.status(404).json({ error: `Nem található termék ezzel a kóddal: ${sku}` });
     res.json(product);
   });
@@ -185,7 +194,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
     const parsed = insertProductSchema.safeParse(coerced);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
-    res.json(await storage.createProduct(parsed.data));
+    res.json(await storage.createProduct(parsed.data, user.companyId));
   });
 
   app.patch("/api/products/:id", async (req, res) => {
@@ -225,13 +234,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (parsed.success) valid.push(parsed.data);
       else errors.push(`Sor ${idx + 1}: ${parsed.error.issues[0]?.message}`);
     });
-    const created = await storage.bulkCreateProducts(valid);
+    const created = await storage.bulkCreateProducts(valid, user.companyId);
     res.json({ created: created.length, errors });
   });
 
   // ─── Machines ──────────────────────────────────────────────────────────────
-  app.get("/api/machines", async (_req, res) => {
-    res.json(await storage.getMachines());
+  app.get("/api/machines", async (req, res) => {
+    const user = (req as any).user;
+    res.json(await storage.getMachines(user.companyId));
   });
 
   app.post("/api/machines", async (req, res) => {
@@ -248,7 +258,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
     const parsed = insertMachineSchema.safeParse(coerced);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
-    res.json(await storage.createMachine(parsed.data));
+    res.json(await storage.createMachine(parsed.data, user.companyId));
   });
 
   app.patch("/api/machines/:id", async (req, res) => {
@@ -270,8 +280,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Orders ────────────────────────────────────────────────────────────────
-  app.get("/api/orders", async (_req, res) => {
-    res.json(await storage.getOrders());
+  app.get("/api/orders", async (req, res) => {
+    const user = (req as any).user;
+    res.json(await storage.getOrders(user.companyId));
   });
 
   app.post("/api/orders", async (req, res) => {
@@ -283,7 +294,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
     const parsed = insertOrderSchema.safeParse(coerced);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
-    res.json(await storage.createOrder(parsed.data));
+    res.json(await storage.createOrder(parsed.data, user.companyId));
   });
 
   app.patch("/api/orders/:id", async (req, res) => {
@@ -352,7 +363,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Termékkódok alapján productId-k hozzárendelése
-      const products = await storage.getProducts();
+      const products = await storage.getProducts(user.companyId);
       const enriched = extracted.map(item => {
         const product = item.productCode
           ? products.find(p => p.sku.toLowerCase() === item.productCode?.toLowerCase())
@@ -383,14 +394,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Tasks (Gantt) ─────────────────────────────────────────────────────────
-  app.get("/api/tasks", async (_req, res) => {
-    res.json(await storage.getTasks());
+  app.get("/api/tasks", async (req, res) => {
+    const user = (req as any).user;
+    res.json(await storage.getTasks(user.companyId));
   });
 
   app.post("/api/tasks", async (req, res) => {
     const parsed = insertTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
-    res.json(await storage.createTask(parsed.data));
+    res.json(await storage.createTask(parsed.data, user.companyId));
   });
 
   app.patch("/api/tasks/:id", async (req, res) => {
@@ -404,8 +416,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── AI Suggestions ────────────────────────────────────────────────────────
-  app.get("/api/ai-suggestions", async (_req, res) => {
-    res.json(await storage.getAiSuggestions());
+  app.get("/api/ai-suggestions", async (req, res) => {
+    const user = (req as any).user;
+    res.json(await storage.getAiSuggestions(user.companyId));
   });
 
   app.patch("/api/ai-suggestions/:id/resolve", async (req, res) => {
@@ -419,9 +432,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!productId || !quantity || !dueDate) {
       return res.status(400).json({ error: "Hiányzó mezők" });
     }
-    const machines = await storage.getMachines();
-    const products = await storage.getProducts();
-    const tasks = await storage.getTasks();
+    const machines = await storage.getMachines(user.companyId);
+    const products = await storage.getProducts(user.companyId);
+    const tasks = await storage.getTasks(user.companyId);
     const product = products.find(p => p.id === Number(productId));
     if (!product) return res.status(404).json({ error: "Termék nem található" });
 
@@ -507,7 +520,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       dueDate: orderData.dueDate,
       notes: orderData.notes || "",
       customer: orderData.customer || "",
-    });
+    }, user.companyId);
     const task = await storage.createTask({
       orderId: order.id,
       machineId: Number(machineId),
@@ -517,7 +530,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       quantity: Number(orderData.quantity),
       status: "planned",
       aiOptimized: true,
-    });
+    }, user.companyId);
     await storage.createAiSuggestion({
       type: "info",
       title: `Új rendelés elfogadva: ${order.orderNumber}`,
@@ -525,16 +538,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       impact: "low",
       resolved: false,
       createdAt: new Date().toISOString(),
-    });
+    }, user.companyId);
     res.json({ order, task });
   });
 
   // ─── Production plan download data ────────────────────────────────────────
-  app.get("/api/production-plan", async (_req, res) => {
-    const orders = await storage.getOrders();
-    const tasks = await storage.getTasks();
-    const machines = await storage.getMachines();
-    const products = await storage.getProducts();
+  app.get("/api/production-plan", async (req, res) => {
+    const user = (req as any).user;
+    const orders = await storage.getOrders(user.companyId);
+    const tasks = await storage.getTasks(user.companyId);
+    const machines = await storage.getMachines(user.companyId);
+    const products = await storage.getProducts(user.companyId);
     const enriched = tasks.map(t => {
       const order = orders.find(o => o.id === t.orderId);
       const machine = machines.find(m => m.id === t.machineId);
@@ -555,11 +569,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── AI Auto-Plan ──────────────────────────────────────────────────────────
-  app.post("/api/ai/auto-plan", async (_req, res) => {
-    await storage.clearTasks();
-    const orders = await storage.getOrders();
-    const machines = await storage.getMachines();
-    const products = await storage.getProducts();
+  app.post("/api/ai/auto-plan", async (req, res) => {
+    const user = (req as any).user;
+    await storage.clearTasks(user.companyId);
+    const orders = await storage.getOrders(user.companyId);
+    const machines = await storage.getMachines(user.companyId);
+    const products = await storage.getProducts(user.companyId);
     const onlineMachines = machines.filter(m => m.status === "online");
     const priorityOrder = ["urgent", "high", "normal", "low"];
     const sorted = [...orders].sort((a, b) =>
@@ -600,7 +615,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         quantity: order.quantity,
         status: "planned",
         aiOptimized: true,
-      });
+      }, user.companyId);
       newTasks.push(task);
       await storage.updateOrder(order.id, { status: "planned" });
     }
@@ -613,21 +628,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         impact: "high",
         resolved: false,
         createdAt: new Date().toISOString(),
-      });
+      }, user.companyId);
     }
     res.json({ tasks: newTasks, message: "AI ütemezés kész" });
   });
 
   // ─── Molds ───────────────────────────────────────────────────────────────
-  app.get("/api/molds", async (_req, res) => {
-    res.json(await storage.getMolds());
+  app.get("/api/molds", async (req, res) => {
+    const user = (req as any).user;
+    res.json(await storage.getMolds(user.companyId));
   });
   app.post("/api/molds", async (req, res) => {
     const body = req.body;
     const coerced = { ...body, productId: Number(body.productId)||0, machineId: Number(body.machineId)||0, cavities: Number(body.cavities)||1, totalShots: Number(body.totalShots)||0, maxShots: Number(body.maxShots)||500000, weight: Number(body.weight)||0, yearOfManufacture: Number(body.yearOfManufacture)||0 };
     const parsed = insertMoldSchema.safeParse(coerced);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
-    res.json(await storage.createMold(parsed.data));
+    res.json(await storage.createMold(parsed.data, user.companyId));
   });
   app.patch("/api/molds/:id", async (req, res) => {
     const id = parseInt(req.params.id);
@@ -643,14 +659,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Maintenance ─────────────────────────────────────────────────────────
-  app.get("/api/maintenance", async (_req, res) => {
-    res.json(await storage.getMaintenanceLogs());
+  app.get("/api/maintenance", async (req, res) => {
+    const user = (req as any).user;
+    res.json(await storage.getMaintenanceLogs(user.companyId));
   });
   app.post("/api/maintenance", async (req, res) => {
     const body = { ...req.body, machineId: Number(req.body.machineId)||0, moldId: Number(req.body.moldId)||0, durationHours: Number(req.body.durationHours)||0, cost: Number(req.body.cost)||0, createdAt: new Date().toISOString() };
     const parsed = insertMaintenanceLogSchema.safeParse(body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
-    res.json(await storage.createMaintenanceLog(parsed.data));
+    res.json(await storage.createMaintenanceLog(parsed.data, user.companyId));
   });
   app.patch("/api/maintenance/:id", async (req, res) => {
     const id = parseInt(req.params.id);

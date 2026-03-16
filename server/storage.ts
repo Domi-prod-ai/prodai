@@ -48,46 +48,46 @@ export interface IStorage {
   resetUserPassword(id: number, passwordHash: string): Promise<void>;
   getSystemStats(): Promise<{ companies: number; users: number; orders: number; products: number; machines: number; molds: number; }>;
 
-  getProducts(): Promise<Product[]>;
+  getProducts(companyId: number): Promise<Product[]>;
   getProduct(id: number): Promise<Product | undefined>;
-  getProductBySku(sku: string): Promise<Product | undefined>;
-  createProduct(p: InsertProduct): Promise<Product>;
+  getProductBySku(sku: string, companyId: number): Promise<Product | undefined>;
+  createProduct(p: InsertProduct, companyId: number): Promise<Product>;
   updateProduct(id: number, data: Partial<Product>): Promise<Product>;
   deleteProduct(id: number): Promise<void>;
-  bulkCreateProducts(items: InsertProduct[]): Promise<Product[]>;
+  bulkCreateProducts(items: InsertProduct[], companyId: number): Promise<Product[]>;
 
-  getMachines(): Promise<Machine[]>;
+  getMachines(companyId: number): Promise<Machine[]>;
   getMachine(id: number): Promise<Machine | undefined>;
-  createMachine(m: InsertMachine): Promise<Machine>;
+  createMachine(m: InsertMachine, companyId: number): Promise<Machine>;
   updateMachine(id: number, data: Partial<Machine>): Promise<Machine>;
   deleteMachine(id: number): Promise<void>;
 
-  getOrders(): Promise<Order[]>;
+  getOrders(companyId: number): Promise<Order[]>;
   getOrder(id: number): Promise<Order | undefined>;
-  createOrder(o: InsertOrder): Promise<Order>;
+  createOrder(o: InsertOrder, companyId: number): Promise<Order>;
   updateOrder(id: number, data: Partial<Order>): Promise<Order>;
   deleteOrder(id: number): Promise<void>;
 
-  getTasks(): Promise<Task[]>;
+  getTasks(companyId: number): Promise<Task[]>;
   getTasksByOrder(orderId: number): Promise<Task[]>;
-  createTask(t: InsertTask): Promise<Task>;
+  createTask(t: InsertTask, companyId: number): Promise<Task>;
   updateTask(id: number, data: Partial<Task>): Promise<Task>;
   deleteTask(id: number): Promise<void>;
-  clearTasks(): Promise<void>;
+  clearTasks(companyId: number): Promise<void>;
 
-  getAiSuggestions(): Promise<AiSuggestion[]>;
-  createAiSuggestion(s: InsertAiSuggestion): Promise<AiSuggestion>;
+  getAiSuggestions(companyId: number): Promise<AiSuggestion[]>;
+  createAiSuggestion(s: InsertAiSuggestion, companyId: number): Promise<AiSuggestion>;
   resolveAiSuggestion(id: number): Promise<AiSuggestion>;
 
-  getMolds(): Promise<Mold[]>;
+  getMolds(companyId: number): Promise<Mold[]>;
   getMold(id: number): Promise<Mold | undefined>;
-  createMold(m: InsertMold): Promise<Mold>;
+  createMold(m: InsertMold, companyId: number): Promise<Mold>;
   updateMold(id: number, data: Partial<Mold>): Promise<Mold>;
   deleteMold(id: number): Promise<void>;
 
-  getMaintenanceLogs(): Promise<MaintenanceLog[]>;
+  getMaintenanceLogs(companyId: number): Promise<MaintenanceLog[]>;
   getMaintenanceLogsByMachine(machineId: number): Promise<MaintenanceLog[]>;
-  createMaintenanceLog(m: InsertMaintenanceLog): Promise<MaintenanceLog>;
+  createMaintenanceLog(m: InsertMaintenanceLog, companyId: number): Promise<MaintenanceLog>;
   updateMaintenanceLog(id: number, data: Partial<MaintenanceLog>): Promise<MaintenanceLog>;
   deleteMaintenanceLog(id: number): Promise<void>;
 
@@ -286,6 +286,7 @@ class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 1,
         name TEXT NOT NULL,
         sku TEXT NOT NULL,
         unit TEXT NOT NULL DEFAULT 'db',
@@ -299,6 +300,7 @@ class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS machines (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 1,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
         capacity_per_hour REAL NOT NULL DEFAULT 10,
@@ -315,6 +317,7 @@ class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 1,
         order_number TEXT NOT NULL,
         product_id INTEGER NOT NULL,
         quantity INTEGER NOT NULL,
@@ -327,6 +330,7 @@ class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 1,
         order_id INTEGER NOT NULL,
         machine_id INTEGER NOT NULL,
         product_id INTEGER NOT NULL,
@@ -339,6 +343,7 @@ class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS ai_suggestions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 1,
         type TEXT NOT NULL,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
@@ -349,6 +354,7 @@ class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS molds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 1,
         name TEXT NOT NULL,
         mold_number TEXT NOT NULL,
         product_id INTEGER DEFAULT 0,
@@ -369,6 +375,7 @@ class SqliteStorage implements IStorage {
 
       CREATE TABLE IF NOT EXISTS maintenance_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL DEFAULT 1,
         machine_id INTEGER DEFAULT 0,
         mold_id INTEGER DEFAULT 0,
         type TEXT NOT NULL,
@@ -479,32 +486,34 @@ class SqliteStorage implements IStorage {
   }
 
   private seedIfEmpty() {
-    const res = this.db.exec("SELECT COUNT(*) as n FROM products");
-    const count = res.length > 0 ? (res[0].values[0][0] as number) : 0;
-    if (count > 0) {
-      // Mindig ellenorizzuk hogy a demo user letezik-e (server ujraindulas utan)
-      this.seedDemoUserIfMissing();
-      return;
-    }
-
-    // Demo ceg + demo user letrehozasa
+    // Demo user/ceg mindig legyen meg
     this.seedDemoUserIfMissing();
 
-    const today = "2026-03-15";
+    // Demo ceg ID-jének lekérése
+    const demoCompany = this.getOne("SELECT id FROM companies WHERE slug=?", ["prodai-demo"]);
+    if (!demoCompany) return;
+    const demoCId = demoCompany.id as number;
+
+    // Csak akkor seed-elünk demo adatot, ha a demo cégnek még nincs terméke
+    const res = this.db.exec(`SELECT COUNT(*) as n FROM products WHERE company_id=${demoCId}`);
+    const count = res.length > 0 ? (res[0].values[0][0] as number) : 0;
+    if (count > 0) return;
+
+    const today = new Date().toISOString().slice(0, 10);
     const now = new Date().toISOString();
 
-    // Termekek
+    // Termékek — csak demo céghez
     [
       ["Aluminium alkatresz A1","ALU-A1","db",45,"#4f98a3","AlSi9Cu3",185,"CNC","BMW futomualkatresz"],
       ["Acel profil B2","ACL-B2","db",30,"#6daa45","S235JR",320,"Presszereles",""],
-      ["Muanyag burkolat C3","MUA-C3","db",20,"#fdab43","ABS",45,"Froccessontes","Bosch panel"],
+      ["Muanyag burkolat C3","MUA-C3","db",20,"#fdab43","ABS",45,"Froccsонtes","Bosch panel"],
       ["Osszeszerelesesi egyseg D4","OSZ-D4","db",90,"#a86fdf","Vegyes",680,"Osszeszerelesec","Audi A6 modul"],
     ].forEach(r => this.run(
-      `INSERT INTO products (name,sku,unit,cycle_time_minutes,color,material,weight,machine_type,notes) VALUES (?,?,?,?,?,?,?,?,?)`,
-      r
+      `INSERT INTO products (company_id,name,sku,unit,cycle_time_minutes,color,material,weight,machine_type,notes) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [demoCId, ...r]
     ));
 
-    // Gepek
+    // Gépek — csak demo céghez
     [
       ["CNC Megmunkalo #1","CNC",12,"online",78,0,0,0,"Aluminium, Acel","Fanuc vezerlo, 5 tengelyes","Mazak",2019],
       ["CNC Megmunkalo #2","CNC",12,"online",91,0,0,0,"Aluminium, Acel, Titan","Siemens 840D vezerlo","DMG Mori",2021],
@@ -513,77 +522,96 @@ class SqliteStorage implements IStorage {
       ["Osszeszereleo sor","Osszeszerelesec",6,"online",83,0,0,0,"Vegyes","Kezi + felautomata, 4 allomas","Sajat gyartas",2017],
       ["Minoseg-ellenorzos","QA",30,"online",42,0,0,0,"Minden","CMM merogep, vizualis ellenorzes","Zeiss",2022],
     ].forEach(r => this.run(
-      `INSERT INTO machines (name,type,capacity_per_hour,status,utilization,clamping_force,shot_volume,screw_diameter,materials,spec_notes,manufacturer,year_of_manufacture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      r
+      `INSERT INTO machines (company_id,name,type,capacity_per_hour,status,utilization,clamping_force,shot_volume,screw_diameter,materials,spec_notes,manufacturer,year_of_manufacture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [demoCId, ...r]
     ));
 
-    // Rendelesek
-    [
-      ["ORD-2026-001",1,120,"urgent","in_progress","2026-03-17","","BMW Kft."],
-      ["ORD-2026-002",2,80,"high","planned","2026-03-19","","Bosch Hungary"],
-      ["ORD-2026-003",3,200,"normal","pending","2026-03-22","",""],
-      ["ORD-2026-004",4,40,"high","planned","2026-03-20","","Audi Hungaria"],
-      ["ORD-2026-005",1,60,"low","pending","2026-03-25","",""],
-    ].forEach(r => this.run(
-      `INSERT INTO orders (order_number,product_id,quantity,priority,status,due_date,notes,customer) VALUES (?,?,?,?,?,?,?,?)`,
-      r
-    ));
+    // Rendelések — csak demo céghez (termék ID-k a demo cég termékeire mutatnak)
+    const demoProds = this.getAll(`SELECT id FROM products WHERE company_id=? ORDER BY id`, [demoCId]);
+    if (demoProds.length >= 4) {
+      const [p1,p2,p3,p4] = demoProds.map((p:any)=>p.id);
+      [
+        ["ORD-2026-001",p1,120,"urgent","in_progress",today,"","BMW Kft."],
+        ["ORD-2026-002",p2,80,"high","planned",today,"","Bosch Hungary"],
+        ["ORD-2026-003",p3,200,"normal","pending",today,"",""],
+        ["ORD-2026-004",p4,40,"high","planned",today,"","Audi Hungaria"],
+        ["ORD-2026-005",p1,60,"low","pending",today,"",""],
+      ].forEach(r => this.run(
+        `INSERT INTO orders (company_id,order_number,product_id,quantity,priority,status,due_date,notes,customer) VALUES (?,?,?,?,?,?,?,?,?)`,
+        [demoCId, ...r]
+      ));
+    }
 
-    // Feladatok
-    [
-      [1,1,1,`${today}T08:00`,`${today}T12:00`,60,"in_progress",1],
-      [1,2,1,`${today}T10:00`,`${today}T14:30`,60,"planned",1],
-      [2,4,2,`${today}T08:00`,`${today}T10:00`,80,"in_progress",0],
-      [4,5,4,`${today}T09:00`,`${today}T15:40`,40,"planned",1],
-      [3,4,3,`${today}T13:00`,`${today}T17:00`,120,"planned",0],
-      [3,1,3,"2026-03-16T08:00","2026-03-16T10:40",80,"planned",1],
-    ].forEach(r => this.run(
-      `INSERT INTO tasks (order_id,machine_id,product_id,start_time,end_time,quantity,status,ai_optimized) VALUES (?,?,?,?,?,?,?,?)`,
-      r
-    ));
+    // Feladatok — csak demo céghez
+    const demoOrds = this.getAll(`SELECT id FROM orders WHERE company_id=? ORDER BY id`, [demoCId]);
+    const demoMachs = this.getAll(`SELECT id FROM machines WHERE company_id=? ORDER BY id`, [demoCId]);
+    if (demoOrds.length >= 5 && demoMachs.length >= 5 && demoProds.length >= 4) {
+      const [o1,o2,o3,o4,o5] = demoOrds.map((o:any)=>o.id);
+      const [m1,m2,,m4,m5] = demoMachs.map((m:any)=>m.id);
+      const [p1,p2,p3,p4] = demoProds.map((p:any)=>p.id);
+      [
+        [o1,m1,p1,`${today}T08:00`,`${today}T12:00`,60,"in_progress",1],
+        [o1,m2,p1,`${today}T10:00`,`${today}T14:30`,60,"planned",1],
+        [o2,m4,p2,`${today}T08:00`,`${today}T10:00`,80,"in_progress",0],
+        [o4,m5,p4,`${today}T09:00`,`${today}T15:40`,40,"planned",1],
+        [o3,m4,p3,`${today}T13:00`,`${today}T17:00`,120,"planned",0],
+      ].forEach(r => this.run(
+        `INSERT INTO tasks (company_id,order_id,machine_id,product_id,start_time,end_time,quantity,status,ai_optimized) VALUES (?,?,?,?,?,?,?,?,?)`,
+        [demoCId, ...r]
+      ));
+    }
 
-    // AI javaslatok
+    // AI javaslatok — csak demo céghez
     [
       ["bottleneck","Szuk keresztmetszet: CNC #2","A CNC Megmunkalo #2 kihasznaltsaga 91% -- 2 oran belul tuleterheles varhato.","high",0,now],
-      ["optimization","Atallasi ido csokkentese","Az ORD-2026-001 es ORD-2026-005 egymast utani utemezesevel 35 perc takaritthato meg.","medium",0,now],
+      ["optimization","Atallasi ido csokkentese","Az egymast utani utemezesevel 35 perc takaritthato meg.","medium",0,now],
       ["warning","Karbantartas: Hegeszto Robot A","A Hegeszto Robot A karbantartas alatt van. Hatarido veszelybe kerulhet.","high",0,now],
       ["info","Optimalis nap: hetfo","Az AI szerint hetfon 23%-kal magasabb hatekonysag erheto el.","low",0,now],
     ].forEach(r => this.run(
-      `INSERT INTO ai_suggestions (type,title,description,impact,resolved,created_at) VALUES (?,?,?,?,?,?)`,
-      r
+      `INSERT INTO ai_suggestions (company_id,type,title,description,impact,resolved,created_at) VALUES (?,?,?,?,?,?,?)`,
+      [demoCId, ...r]
     ));
 
-    // Szerszamok
-    [
-      ["BMW futommu forma A","FM-001",1,1,"P20",2,"active","A raktar - 3. polc",182400,500000,"2026-01-15","2026-06-15","2 feszkeses, hideg csatorna","Hasco",2021,480],
-      ["Acel profil presforma","FM-002",2,4,"H13",4,"active","B raktar - 1. polc",310000,400000,"2025-11-20","2026-04-01","4 feszkeses, meleg csatorna","DME",2019,920],
-      ["ABS burkolat forma","FM-003",3,4,"P20",1,"maintenance","Karbantarto muhely",495000,500000,"2026-03-10","2026-03-20","Elesites + polizalas alatt","Sajat gyartas",2018,320],
-      ["Osszeszerelesesi egyseg forma","FM-004",4,1,"H13",1,"active","A raktar - 1. polc",95000,300000,"2025-09-05","2026-09-05","Komplex betetes szerszam","Hasco",2023,1100],
-    ].forEach(r => this.run(
-      `INSERT INTO molds (name,mold_number,product_id,machine_id,material,cavities,status,location,total_shots,max_shots,last_maintenance_date,next_maintenance_date,notes,manufacturer,year_of_manufacture,weight) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      r
-    ));
+    // Szerszámok — csak demo céghez
+    if (demoProds.length >= 4 && demoMachs.length >= 4) {
+      const [p1,p2,p3,p4] = demoProds.map((p:any)=>p.id);
+      const [m1,,,m4] = demoMachs.map((m:any)=>m.id);
+      [
+        ["BMW futommu forma A","FM-001",p1,m1,"P20",2,"active","A raktar - 3. polc",182400,500000,"2026-01-15","2026-06-15","2 feszkeses, hideg csatorna","Hasco",2021,480],
+        ["Acel profil presforma","FM-002",p2,m4,"H13",4,"active","B raktar - 1. polc",310000,400000,"2025-11-20","2026-04-01","4 feszkeses, meleg csatorna","DME",2019,920],
+        ["ABS burkolat forma","FM-003",p3,m4,"P20",1,"maintenance","Karbantarto muhely",495000,500000,"2026-03-10","2026-03-20","Elesites + polizalas alatt","Sajat gyartas",2018,320],
+        ["Osszeszerelesesi egyseg forma","FM-004",p4,m1,"H13",1,"active","A raktar - 1. polc",95000,300000,"2025-09-05","2026-09-05","Komplex betetes szerszam","Hasco",2023,1100],
+      ].forEach(r => this.run(
+        `INSERT INTO molds (company_id,name,mold_number,product_id,machine_id,material,cavities,status,location,total_shots,max_shots,last_maintenance_date,next_maintenance_date,notes,manufacturer,year_of_manufacture,weight) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [demoCId, ...r]
+      ));
+    }
 
-    // Karbantartasi naplok
-    [
-      [3,0,"corrective","Hegeszto Robot A - aramkor csere","Vezerloegyseg meghibasodas, aramkori lap csere szukseges.","in_progress","2026-03-14","","Kovacs Peter",8,85000,"",now],
-      [2,0,"preventive","CNC #2 - kenoanyag csere + beallitas","Negyedeveves PM: kenesi pontok, tengelyek beallitasa, szurOcsere.","scheduled","2026-03-28","","Nagy Imre",4,12000,"",now],
-      [4,3,"preventive","Presszer #1 + FM-003 - teljes atvizsgalas","ABS burkolat forma elesites es presszer hidraulika ellenorzes.","in_progress","2026-03-10","","Toth Gabor",16,45000,"Forma polizalas folyamatban",now],
-      [1,0,"inspection","CNC #1 - eves felulvizsgalat","Eves biztonsagi es muszaki felulvizsgalat.","scheduled","2026-04-15","","",2,0,"",now],
-      [5,0,"preventive","Osszeszereleo sor - futoszalag karbantartas","Szijak, gorgek ellenorzese es zsarozasa.","done","2026-03-01","2026-03-01","Varga Laszlo",3,8000,"Rendben elvegezve",now],
-    ].forEach(r => this.run(
-      `INSERT INTO maintenance_logs (machine_id,mold_id,type,title,description,status,scheduled_date,completed_date,technician_name,duration_hours,cost,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      r
-    ));
+    // Karbantartási naplók — csak demo céghez
+    if (demoMachs.length >= 5) {
+      const [m1,m2,m3,m4,m5] = demoMachs.map((m:any)=>m.id);
+      const demoMoldsList = this.getAll(`SELECT id FROM molds WHERE company_id=? ORDER BY id`, [demoCId]);
+      const moldId3 = demoMoldsList.length >= 3 ? demoMoldsList[2].id : 0;
+      [
+        [m3,0,"corrective","Hegeszto Robot A - aramkor csere","Vezerloegyseg meghibasodas, aramkori lap csere szukseges.","in_progress",today,"","Kovacs Peter",8,85000,"",now],
+        [m2,0,"preventive","CNC #2 - kenoanyag csere + beallitas","Negyedeveves PM: kenesi pontok, tengelyek beallitasa, szurOcsere.","scheduled",today,"","Nagy Imre",4,12000,"",now],
+        [m4,moldId3,"preventive","Presszer #1 + FM-003 - teljes atvizsgalas","ABS burkolat forma elesites es presszer hidraulika ellenorzes.","in_progress",today,"","Toth Gabor",16,45000,"Forma polizalas folyamatban",now],
+        [m1,0,"inspection","CNC #1 - eves felulvizsgalat","Eves biztonsagi es muszaki felulvizsgalat.","scheduled",today,"","",2,0,"",now],
+        [m5,0,"preventive","Osszeszereleo sor - futoszalag karbantartas","Szijak, gorgek ellenorzese es zsarozasa.","done",today,today,"Varga Laszlo",3,8000,"Rendben elvegezve",now],
+      ].forEach(r => this.run(
+        `INSERT INTO maintenance_logs (company_id,machine_id,mold_id,type,title,description,status,scheduled_date,completed_date,technician_name,duration_hours,cost,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [demoCId, ...r]
+      ));
+    }
   }
 
   // ── Products ──
-  async getProducts() { return this.getAll("SELECT * FROM products").map(r => this.row2product(r)); }
+  async getProducts(companyId: number) { return this.getAll("SELECT * FROM products WHERE company_id=?", [companyId]).map(r => this.row2product(r)); }
   async getProduct(id: number) { const r = this.getOne("SELECT * FROM products WHERE id=?", [id]); return r ? this.row2product(r) : undefined; }
-  async getProductBySku(sku: string) { const r = this.getOne("SELECT * FROM products WHERE LOWER(sku)=LOWER(?)", [sku]); return r ? this.row2product(r) : undefined; }
-  async createProduct(p: InsertProduct) {
-    const id = this.run(`INSERT INTO products (name,sku,unit,cycle_time_minutes,color,material,weight,machine_type,notes) VALUES (?,?,?,?,?,?,?,?,?)`,
-      [p.name, p.sku, p.unit??'db', p.cycleTimeMinutes??60, p.color??'#4f98a3', p.material??'', p.weight??0, p.machineType??'', p.notes??'']);
+  async getProductBySku(sku: string, companyId: number) { const r = this.getOne("SELECT * FROM products WHERE LOWER(sku)=LOWER(?) AND company_id=?", [sku, companyId]); return r ? this.row2product(r) : undefined; }
+  async createProduct(p: InsertProduct, companyId: number) {
+    const id = this.run(`INSERT INTO products (company_id,name,sku,unit,cycle_time_minutes,color,material,weight,machine_type,notes) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [companyId, p.name, p.sku, p.unit??'db', p.cycleTimeMinutes??60, p.color??'#4f98a3', p.material??'', p.weight??0, p.machineType??'', p.notes??'']);
     return this.getProduct(id) as Promise<Product>;
   }
   async updateProduct(id: number, data: Partial<Product>) {
@@ -594,18 +622,18 @@ class SqliteStorage implements IStorage {
     return this.getProduct(id) as Promise<Product>;
   }
   async deleteProduct(id: number) { this.run("DELETE FROM products WHERE id=?", [id]); }
-  async bulkCreateProducts(items: InsertProduct[]) {
+  async bulkCreateProducts(items: InsertProduct[], companyId: number) {
     const results: Product[] = [];
-    for (const item of items) results.push(await this.createProduct(item));
+    for (const item of items) results.push(await this.createProduct(item, companyId));
     return results;
   }
 
   // ── Machines ──
-  async getMachines() { return this.getAll("SELECT * FROM machines").map(r => this.row2machine(r)); }
+  async getMachines(companyId: number) { return this.getAll("SELECT * FROM machines WHERE company_id=?", [companyId]).map(r => this.row2machine(r)); }
   async getMachine(id: number) { const r = this.getOne("SELECT * FROM machines WHERE id=?", [id]); return r ? this.row2machine(r) : undefined; }
-  async createMachine(m: InsertMachine) {
-    const id = this.run(`INSERT INTO machines (name,type,capacity_per_hour,status,utilization,clamping_force,shot_volume,screw_diameter,materials,spec_notes,manufacturer,year_of_manufacture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [m.name, m.type, m.capacityPerHour??10, m.status??'online', m.utilization??0, m.clampingForce??0, m.shotVolume??0, m.screwDiameter??0, m.materials??'', m.specNotes??'', m.manufacturer??'', m.yearOfManufacture??0]);
+  async createMachine(m: InsertMachine, companyId: number) {
+    const id = this.run(`INSERT INTO machines (company_id,name,type,capacity_per_hour,status,utilization,clamping_force,shot_volume,screw_diameter,materials,spec_notes,manufacturer,year_of_manufacture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [companyId, m.name, m.type, m.capacityPerHour??10, m.status??'online', m.utilization??0, m.clampingForce??0, m.shotVolume??0, m.screwDiameter??0, m.materials??'', m.specNotes??'', m.manufacturer??'', m.yearOfManufacture??0]);
     return this.getMachine(id) as Promise<Machine>;
   }
   async updateMachine(id: number, data: Partial<Machine>) {
@@ -618,11 +646,11 @@ class SqliteStorage implements IStorage {
   async deleteMachine(id: number) { this.run("DELETE FROM machines WHERE id=?", [id]); }
 
   // ── Orders ──
-  async getOrders() { return this.getAll("SELECT * FROM orders").map(r => this.row2order(r)); }
+  async getOrders(companyId: number) { return this.getAll("SELECT * FROM orders WHERE company_id=?", [companyId]).map(r => this.row2order(r)); }
   async getOrder(id: number) { const r = this.getOne("SELECT * FROM orders WHERE id=?", [id]); return r ? this.row2order(r) : undefined; }
-  async createOrder(o: InsertOrder) {
-    const id = this.run(`INSERT INTO orders (order_number,product_id,quantity,priority,status,due_date,notes,customer) VALUES (?,?,?,?,?,?,?,?)`,
-      [o.orderNumber, o.productId, o.quantity, o.priority??'normal', o.status??'pending', o.dueDate, o.notes??'', o.customer??'']);
+  async createOrder(o: InsertOrder, companyId: number) {
+    const id = this.run(`INSERT INTO orders (company_id,order_number,product_id,quantity,priority,status,due_date,notes,customer) VALUES (?,?,?,?,?,?,?,?,?)`,
+      [companyId, o.orderNumber, o.productId, o.quantity, o.priority??'normal', o.status??'pending', o.dueDate, o.notes??'', o.customer??'']);
     return this.getOrder(id) as Promise<Order>;
   }
   async updateOrder(id: number, data: Partial<Order>) {
@@ -635,11 +663,11 @@ class SqliteStorage implements IStorage {
   async deleteOrder(id: number) { this.run("DELETE FROM orders WHERE id=?", [id]); }
 
   // ── Tasks ──
-  async getTasks() { return this.getAll("SELECT * FROM tasks").map(r => this.row2task(r)); }
+  async getTasks(companyId: number) { return this.getAll("SELECT * FROM tasks WHERE company_id=?", [companyId]).map(r => this.row2task(r)); }
   async getTasksByOrder(orderId: number) { return this.getAll("SELECT * FROM tasks WHERE order_id=?", [orderId]).map(r => this.row2task(r)); }
-  async createTask(t: InsertTask) {
-    const id = this.run(`INSERT INTO tasks (order_id,machine_id,product_id,start_time,end_time,quantity,status,ai_optimized) VALUES (?,?,?,?,?,?,?,?)`,
-      [t.orderId, t.machineId, t.productId, t.startTime, t.endTime, t.quantity, t.status??'planned', t.aiOptimized?1:0]);
+  async createTask(t: InsertTask, companyId: number) {
+    const id = this.run(`INSERT INTO tasks (company_id,order_id,machine_id,product_id,start_time,end_time,quantity,status,ai_optimized) VALUES (?,?,?,?,?,?,?,?,?)`,
+      [companyId, t.orderId, t.machineId, t.productId, t.startTime, t.endTime, t.quantity, t.status??'planned', t.aiOptimized?1:0]);
     return this.getTaskById(id) as Promise<Task>;
   }
   private getTaskById(id: number) { const r = this.getOne("SELECT * FROM tasks WHERE id=?", [id]); return r ? this.row2task(r) : undefined; }
@@ -651,13 +679,13 @@ class SqliteStorage implements IStorage {
     return this.getTaskById(id) as Task;
   }
   async deleteTask(id: number) { this.run("DELETE FROM tasks WHERE id=?", [id]); }
-  async clearTasks() { this.run("DELETE FROM tasks"); }
+  async clearTasks(companyId: number) { this.run("DELETE FROM tasks WHERE company_id=?", [companyId]); }
 
   // ── AI Suggestions ──
-  async getAiSuggestions() { return this.getAll("SELECT * FROM ai_suggestions").map(r => this.row2suggestion(r)); }
-  async createAiSuggestion(s: InsertAiSuggestion) {
-    const id = this.run(`INSERT INTO ai_suggestions (type,title,description,impact,resolved,created_at) VALUES (?,?,?,?,?,?)`,
-      [s.type, s.title, s.description, s.impact, 0, s.createdAt]);
+  async getAiSuggestions(companyId: number) { return this.getAll("SELECT * FROM ai_suggestions WHERE company_id=?", [companyId]).map(r => this.row2suggestion(r)); }
+  async createAiSuggestion(s: InsertAiSuggestion, companyId: number) {
+    const id = this.run(`INSERT INTO ai_suggestions (company_id,type,title,description,impact,resolved,created_at) VALUES (?,?,?,?,?,?,?)`,
+      [companyId, s.type, s.title, s.description, s.impact, 0, s.createdAt]);
     const row = this.getOne("SELECT * FROM ai_suggestions WHERE id=?", [id]);
     return this.row2suggestion(row);
   }
@@ -669,11 +697,11 @@ class SqliteStorage implements IStorage {
   }
 
   // ── Molds ──
-  async getMolds() { return this.getAll("SELECT * FROM molds").map(r => this.row2mold(r)); }
+  async getMolds(companyId: number) { return this.getAll("SELECT * FROM molds WHERE company_id=?", [companyId]).map(r => this.row2mold(r)); }
   async getMold(id: number) { const r = this.getOne("SELECT * FROM molds WHERE id=?", [id]); return r ? this.row2mold(r) : undefined; }
-  async createMold(m: InsertMold) {
-    const id = this.run(`INSERT INTO molds (name,mold_number,product_id,machine_id,material,cavities,status,location,total_shots,max_shots,last_maintenance_date,next_maintenance_date,notes,manufacturer,year_of_manufacture,weight) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [m.name, m.moldNumber, m.productId??0, m.machineId??0, m.material??'', m.cavities??1, m.status??'active', m.location??'', m.totalShots??0, m.maxShots??500000, m.lastMaintenanceDate??'', m.nextMaintenanceDate??'', m.notes??'', m.manufacturer??'', m.yearOfManufacture??0, m.weight??0]);
+  async createMold(m: InsertMold, companyId: number) {
+    const id = this.run(`INSERT INTO molds (company_id,name,mold_number,product_id,machine_id,material,cavities,status,location,total_shots,max_shots,last_maintenance_date,next_maintenance_date,notes,manufacturer,year_of_manufacture,weight) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [companyId, m.name, m.moldNumber, m.productId??0, m.machineId??0, m.material??'', m.cavities??1, m.status??'active', m.location??'', m.totalShots??0, m.maxShots??500000, m.lastMaintenanceDate??'', m.nextMaintenanceDate??'', m.notes??'', m.manufacturer??'', m.yearOfManufacture??0, m.weight??0]);
     return this.getMold(id) as Promise<Mold>;
   }
   async updateMold(id: number, data: Partial<Mold>) {
@@ -686,11 +714,11 @@ class SqliteStorage implements IStorage {
   async deleteMold(id: number) { this.run("DELETE FROM molds WHERE id=?", [id]); }
 
   // ── Maintenance ──
-  async getMaintenanceLogs() { return this.getAll("SELECT * FROM maintenance_logs").map(r => this.row2maintenance(r)); }
+  async getMaintenanceLogs(companyId: number) { return this.getAll("SELECT * FROM maintenance_logs WHERE company_id=?", [companyId]).map(r => this.row2maintenance(r)); }
   async getMaintenanceLogsByMachine(machineId: number) { return this.getAll("SELECT * FROM maintenance_logs WHERE machine_id=?", [machineId]).map(r => this.row2maintenance(r)); }
-  async createMaintenanceLog(m: InsertMaintenanceLog) {
-    const id = this.run(`INSERT INTO maintenance_logs (machine_id,mold_id,type,title,description,status,scheduled_date,completed_date,technician_name,duration_hours,cost,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [m.machineId??0, m.moldId??0, m.type, m.title, m.description??'', m.status??'scheduled', m.scheduledDate, m.completedDate??'', m.technicianName??'', m.durationHours??0, m.cost??0, m.notes??'', m.createdAt]);
+  async createMaintenanceLog(m: InsertMaintenanceLog, companyId: number) {
+    const id = this.run(`INSERT INTO maintenance_logs (company_id,machine_id,mold_id,type,title,description,status,scheduled_date,completed_date,technician_name,duration_hours,cost,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [companyId, m.machineId??0, m.moldId??0, m.type, m.title, m.description??'', m.status??'scheduled', m.scheduledDate, m.completedDate??'', m.technicianName??'', m.durationHours??0, m.cost??0, m.notes??'', m.createdAt]);
     const row = this.getOne("SELECT * FROM maintenance_logs WHERE id=?", [id]);
     return this.row2maintenance(row);
   }
