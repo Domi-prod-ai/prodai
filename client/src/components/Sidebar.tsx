@@ -3,14 +3,14 @@ import { LayoutDashboard, CalendarDays, ClipboardList, Cpu, Zap, PackageSearch, 
 import { useQuery } from "@tanstack/react-query";
 
 const navItems = [
-  { href: "/", icon: LayoutDashboard, label: "\u00c1ttekint\u00e9s" },
-  { href: "/import", icon: PackageSearch, label: "Rendel\u00e9s import", highlight: true },
-  { href: "/gantt", icon: CalendarDays, label: "Gantt \u00fctemterv" },
-  { href: "/orders", icon: ClipboardList, label: "Rendel\u00e9sek" },
-  { href: "/products", icon: Package, label: "Term\u00e9kek" },
-  { href: "/machines", icon: Cpu, label: "G\u00e9pek" },
-  { href: "/molds", icon: Wrench, label: "Szersz\u00e1mok" },
-  { href: "/maintenance", icon: CalendarClock, label: "Karbantart\u00e1s" },
+  { href: "/", icon: LayoutDashboard, label: "Áttekintés" },
+  { href: "/import", icon: PackageSearch, label: "Rendelés import", highlight: true },
+  { href: "/gantt", icon: CalendarDays, label: "Gantt ütemterv" },
+  { href: "/orders", icon: ClipboardList, label: "Rendelések" },
+  { href: "/products", icon: Package, label: "Termékek" },
+  { href: "/machines", icon: Cpu, label: "Gépek" },
+  { href: "/molds", icon: Wrench, label: "Szerszámok" },
+  { href: "/maintenance", icon: CalendarClock, label: "Karbantartás" },
   { href: "/reports", icon: BarChart2, label: "Riportok" },
   { href: "/team", icon: Users, label: "Csapattagok" },
 ];

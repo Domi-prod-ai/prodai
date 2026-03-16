@@ -25,11 +25,11 @@ export default function LoginPage({ onSuccess, onGoRegister }: Props) {
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || "Hib\u00e1s email vagy jelsz\u00f3"); setLoading(false); return; }
+      if (!res.ok) { setError(data.error || "Invalid email or password"); setLoading(false); return; }
       saveAuth(data.token, data.user, data.company);
       onSuccess();
     } catch {
-      setError("A szerver nem el\u00e9rhet\u0151. K\u00e9rjük, pr\u00f3b\u00e1ld \u00fajra.");
+      setError("Server unavailable. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -38,7 +38,6 @@ export default function LoginPage({ onSuccess, onGoRegister }: Props) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-xl bg-[hsl(206,70%,40%)] flex items-center justify-center">
@@ -48,33 +47,32 @@ export default function LoginPage({ onSuccess, onGoRegister }: Props) {
             </div>
             <span className="text-2xl font-bold text-slate-800">ProdAI</span>
           </div>
-          <p className="text-slate-500 text-sm">AI vez\u00e9relt termel\u00e9s tervez\u0151</p>
+          <p className="text-slate-500 text-sm">AI-driven production planner</p>
         </div>
 
-        {/* K\u00e1rtya */}
         <div className="bg-white rounded-2xl shadow-lg p-8">
-          <h1 className="text-xl font-semibold text-slate-800 mb-1">Bejelentkezés</h1>
-          <p className="text-slate-500 text-sm mb-6">\u00dcDv\u00f6zl\u00fcnk! K\u00e9rj\u00fck, l\u00e9pj be.</p>
+          <h1 className="text-xl font-semibold text-slate-800 mb-1">Sign In</h1>
+          <p className="text-slate-500 text-sm mb-6">Welcome back! Please sign in to continue.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email c\u00edm</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Email address</label>
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="pelda@ceg.hu"
+                placeholder="you@company.com"
                 required
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Jelsz\u00f3</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                placeholder="••••••••"
                 required
                 className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
@@ -91,20 +89,20 @@ export default function LoginPage({ onSuccess, onGoRegister }: Props) {
               disabled={loading}
               className="w-full bg-[hsl(206,70%,40%)] hover:bg-[hsl(206,70%,35%)] text-white font-medium py-2.5 rounded-xl transition disabled:opacity-60"
             >
-              {loading ? "Bejelentkezés..." : "Bejelentkezés"}
+              {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
 
           <div className="mt-6 text-center text-sm text-slate-500">
-            M\u00e9g nincs fi\u00f3kod?{" "}
+            Don&apos;t have an account?{" "}
             <button onClick={onGoRegister} className="text-[hsl(206,70%,40%)] font-medium hover:underline">
-              Regisztr\u00e1ci\u00f3
+              Register
             </button>
           </div>
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          by <span className="font-medium">ProdAI</span> \u00b7 Poly\u00e1k Dominik \u00b7 SZE 2026
+          by <span className="font-medium">ProdAI</span> &middot; Polyak Dominik &middot; SZE 2026
         </p>
       </div>
     </div>
