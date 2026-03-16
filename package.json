@@ -130,11 +130,20 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0"
-  },
-  "devDependencies": {
+    "zod-validation-error": "^3.4.0",
+    "tsx": "^4.20.5",
+    "vite": "^7.3.0",
+    "esbuild": "^0.25.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "5.6.3",
+    "tailwindcss": "^3.4.17",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.1.18",
+    "drizzle-kit": "^0.31.8"
+  },
+  "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.0",
@@ -147,17 +156,8 @@
     "@types/react-dom": "^18.3.1",
     "@types/sql.js": "^1.4.9",
     "@types/ws": "^8.5.13",
-    "@vitejs/plugin-react": "^4.7.0",
-    "autoprefixer": "^10.4.20",
-    "drizzle-kit": "^0.31.8",
     "electron": "^41.0.2",
-    "electron-builder": "^26.8.1",
-    "esbuild": "^0.25.0",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.17",
-    "tsx": "^4.20.5",
-    "typescript": "5.6.3",
-    "vite": "^7.3.0"
+    "electron-builder": "^26.8.1"
   },
   "overrides": {
     "drizzle-kit": {
