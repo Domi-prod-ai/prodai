@@ -268,6 +268,7 @@ export default function AdminPage({ onBack }: { onBack: () => void }) {
                   <tr className="border-b border-slate-100 bg-slate-50">
                     <th className="text-left px-4 py-3 text-slate-500 font-medium">Felhasználó</th>
                     <th className="text-left px-4 py-3 text-slate-500 font-medium">Cég</th>
+                    <th className="text-left px-4 py-3 text-slate-500 font-medium">Regisztrálva</th>
                     <th className="text-left px-4 py-3 text-slate-500 font-medium">Szerepkör</th>
                     <th className="text-left px-4 py-3 text-slate-500 font-medium">Jelszó visszaállítás</th>
                     <th className="text-left px-4 py-3 text-slate-500 font-medium">Törlés</th>
@@ -288,6 +289,7 @@ export default function AdminPage({ onBack }: { onBack: () => void }) {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-600 text-xs">{u.companyName}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{u.createdAt ? new Date(u.createdAt).toLocaleString("hu-HU") : "-"}</td>
                       <td className="px-4 py-3">
                         <select
                           value={u.role}
@@ -328,7 +330,7 @@ export default function AdminPage({ onBack }: { onBack: () => void }) {
                     </tr>
                   ))}
                   {users.length === 0 && (
-                    <tr><td colSpan={5} className="px-5 py-12 text-center text-slate-400">Még nincs regisztrált felhasználó</td></tr>
+                    <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-400">Még nincs regisztrált felhasználó</td></tr>
                   )}
                 </tbody>
               </table>
