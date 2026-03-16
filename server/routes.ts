@@ -440,7 +440,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const onlineMachines = machines.filter(m => m.status === "online");
     const due = new Date(dueDate);
-    const now = new Date("2026-03-15T08:00:00");
+    const now = new Date();
     const hoursAvailable = Math.max(1, (due.getTime() - now.getTime()) / 3600000);
     const totalMinutesNeeded = product.cycleTimeMinutes * Number(quantity);
 
@@ -474,7 +474,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const machineTasks = tasks
         .filter(t => t.machineId === s.machine.id)
         .sort((a, b) => new Date(a.endTime).getTime() - new Date(b.endTime).getTime());
-      let startTime = new Date("2026-03-15T08:00:00");
+      let startTime = new Date();
       if (machineTasks.length > 0) {
         const lastEnd = new Date(machineTasks[machineTasks.length - 1].endTime);
         if (lastEnd > startTime) startTime = lastEnd;
@@ -581,7 +581,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority)
     );
     const machineEndTimes: Record<number, Date> = {};
-    onlineMachines.forEach(m => { machineEndTimes[m.id] = new Date("2026-03-15T08:00:00"); });
+    onlineMachines.forEach(m => { machineEndTimes[m.id] = new Date(); });
     const newTasks = [];
     for (const order of sorted) {
       const product = products.find(p => p.id === order.productId);
