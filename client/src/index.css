@@ -98,6 +98,8 @@ html, body, #root { height: 100%; overflow: hidden; margin: 0; }
   overflow-y: auto;
   overscroll-behavior: contain;
   position: relative;
+  height: 100dvh;
+  min-height: 0;
 }
 
 /* Sidebar wrapper (desktop: static, mobile: overlay) */
@@ -111,6 +113,8 @@ html, body, #root { height: 100%; overflow: hidden; margin: 0; }
   overflow-y: auto;
   overscroll-behavior: contain;
   border-right: 1px solid hsl(var(--border));
+  height: 100dvh;
+  min-height: 0;
 }
 
 /* Hamburger gomb (csak mobilon) */
