@@ -8,6 +8,7 @@ import pdfParse from "pdf-parse";
 import { hashPassword, comparePassword, generateToken, requireAuth, requireSuperAdmin } from "./auth";
 import { sendWelcomeEmail, sendInviteEmail, sendDeadlineWarningEmail } from "./email";
 import crypto from "crypto";
+import { computeMachineScore } from "./ai";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -426,7 +427,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.resolveAiSuggestion(id));
   });
 
-  // ─── AI: Analyze order → machine recommendation ────────────────────────────
+  // ─── AI: Analyze order → machine recommendation (okos, előzmény-alapú) ─────
   app.post("/api/ai/analyze-order", async (req, res) => {
     const { orderNumber, productId, quantity, priority, dueDate, notes } = req.body;
     if (!productId || !quantity || !dueDate) {
@@ -435,6 +436,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const machines = await storage.getMachines(user.companyId);
     const products = await storage.getProducts(user.companyId);
     const tasks = await storage.getTasks(user.companyId);
+    const maintenanceLogs = await storage.getMaintenanceLogs(user.companyId);
     const product = products.find(p => p.id === Number(productId));
     if (!product) return res.status(404).json({ error: "Termék nem található" });
 
@@ -443,40 +445,69 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const now = new Date();
     const hoursAvailable = Math.max(1, (due.getTime() - now.getTime()) / 3600000);
     const totalMinutesNeeded = product.cycleTimeMinutes * Number(quantity);
-
-    // Ha a terméknek van machineType preferenciája, először azokat preferálja
     const preferredType = product.machineType || "";
+
     const scored = onlineMachines.map(m => {
-      const machineTasks = tasks.filter(t => t.machineId === m.id);
-      const bookedMinutes = machineTasks.reduce((acc, t) => {
-        const start = new Date(t.startTime);
-        const end = new Date(t.endTime);
-        return acc + (end.getTime() - start.getTime()) / 60000;
+      // Előzmény-alapú megbízhatósági pontszám (karbantartás, késések, terhelés)
+      const { reliabilityScore, penaltyReasons, bonusReasons } =
+        computeMachineScore(m, tasks, maintenanceLogs);
+
+      // Tényleges szabad kapacitás a határidőig
+      const futureTasks = tasks.filter(t =>
+        t.machineId === m.id && new Date(t.endTime) > now
+      );
+      const bookedMinutes = futureTasks.reduce((acc, t) => {
+        const tStart = new Date(t.startTime) < now ? now : new Date(t.startTime);
+        const tEnd = new Date(t.endTime) > due ? due : new Date(t.endTime);
+        return acc + Math.max(0, (tEnd.getTime() - tStart.getTime()) / 60000);
       }, 0);
       const availableMinutes = hoursAvailable * 60 - bookedMinutes;
       const canFit = availableMinutes >= totalMinutesNeeded;
-      const utilizationScore = m.utilization;
-      const capacityMatch = Math.min(100, (m.capacityPerHour / 10) * 100);
-      const urgencyBonus = (priority === "urgent" || priority === "high") && m.utilization < 70 ? -20 : 0;
-      // Termék-gép kompatibilitás bonus
-      const typeMatch = preferredType && m.type.toLowerCase().includes(preferredType.toLowerCase()) ? -30 : 0;
-      const materialMatch = preferredType && m.materials && m.materials.toLowerCase().includes(product.material?.toLowerCase() || "") ? -15 : 0;
-      const score = utilizationScore - capacityMatch + urgencyBonus + (canFit ? 0 : 100) + typeMatch + materialMatch;
-      let reason = `${m.name} jelenleg ${m.utilization}% kihasználtsággal üzemel.`;
-      if (typeMatch < 0) reason += ` Termék típus-kompatibilis (${product.machineType}).`;
-      if (canFit) reason += ` A rendelés (${totalMinutesNeeded} perc) belefér a határidő előtt.`;
-      else reason += ` Figyelem: csak részlegesen fér bele a határidőbe.`;
-      return { machine: m, score, reason, canFit, availableMinutes };
+
+      // Termék-gép kompatibilitás bónuszok
+      const typeMatch = preferredType &&
+        m.type.toLowerCase().includes(preferredType.toLowerCase()) ? 20 : 0;
+      const materialMatch = product.material && m.materials &&
+        m.materials.toLowerCase().includes(product.material.toLowerCase()) ? 10 : 0;
+
+      // Sürgős rendelésnél szabad gép bónusz
+      const urgencyBonus = (priority === "urgent" || priority === "high") &&
+        m.utilization < 70 ? 15 : 0;
+
+      // Befér-e a határidőbe?
+      const fitBonus = canFit ? 20 : -30;
+
+      // Végső pontszám (0–100)
+      const finalScore = Math.max(0, Math.min(100,
+        reliabilityScore + typeMatch + materialMatch + urgencyBonus + fitBonus
+      ));
+
+      // Indoklás szöveg összeállítása
+      const reasons: string[] = [];
+      reasons.push(`Kihasználtság: ${m.utilization}%`);
+      if (typeMatch > 0) reasons.push(`Kompatibilis géptípus (${product.machineType})`);
+      if (materialMatch > 0) reasons.push(`Kompatibilis anyag (${product.material})`);
+      if (canFit) reasons.push(`Rendelés belefér a határidőbe (${availableMinutes.toFixed(0)} perc szabad)`);
+      else reasons.push(`Figyelem: ${availableMinutes.toFixed(0)} perc szabad, de ${totalMinutesNeeded} kell`);
+      if (penaltyReasons.length) reasons.push(...penaltyReasons);
+      if (bonusReasons.length) reasons.push(...bonusReasons);
+
+      return { machine: m, finalScore, reliabilityScore, reason: reasons.join(" | "),
+        canFit, availableMinutes, penaltyReasons, bonusReasons };
     });
-    scored.sort((a, b) => a.score - b.score);
+
+    // Rendezés: magasabb pontszám = jobb gép
+    scored.sort((a, b) => b.finalScore - a.finalScore);
     const top3 = scored.slice(0, Math.min(3, scored.length));
+
     const suggestions = top3.map((s, idx) => {
-      const machineTasks = tasks
-        .filter(t => t.machineId === s.machine.id)
+      // Legkorábbi szabad kezdés: utolsó jövőbeli feladat vége után
+      const futureTasks = tasks
+        .filter(t => t.machineId === s.machine.id && new Date(t.endTime) > now)
         .sort((a, b) => new Date(a.endTime).getTime() - new Date(b.endTime).getTime());
-      let startTime = new Date();
-      if (machineTasks.length > 0) {
-        const lastEnd = new Date(machineTasks[machineTasks.length - 1].endTime);
+      let startTime = new Date(now.getTime() + 15 * 60000);
+      if (futureTasks.length > 0) {
+        const lastEnd = new Date(futureTasks[futureTasks.length - 1].endTime);
         if (lastEnd > startTime) startTime = lastEnd;
       }
       const endTime = new Date(startTime.getTime() + totalMinutesNeeded * 60000);
@@ -484,26 +515,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return {
         rank: idx + 1,
         machine: s.machine,
-        score: Math.max(0, 100 - s.score),
+        score: s.finalScore,
+        reliabilityScore: s.reliabilityScore,
         reason: s.reason,
         canFit: s.canFit,
         onTime,
         suggestedStart: startTime.toISOString().slice(0, 16),
         suggestedEnd: endTime.toISOString().slice(0, 16),
         estimatedMinutes: totalMinutesNeeded,
+        warnings: s.penaltyReasons,
+        bonuses: s.bonusReasons,
       };
     });
+
     const best = suggestions[0];
     const analysisText = [
       `Rendelés: ${orderNumber || "Új rendelés"} | Termék: ${product.name} | Mennyiség: ${quantity} db`,
       `Szükséges gyártási idő: ${totalMinutesNeeded} perc (${(totalMinutesNeeded / 60).toFixed(1)} óra)`,
       `Határidő: ${dueDate} — ${hoursAvailable.toFixed(0)} óra áll rendelkezésre`,
       ``,
-      `Legjobb javaslat: ${best.machine.name}`,
-      best.reason,
-      best.onTime
+      `Legjobb javaslat: ${best?.machine.name} (Pontszám: ${best?.score}/100, Megbízhatóság: ${best?.reliabilityScore}/100)`,
+      best?.reason,
+      best?.onTime
         ? `A gyártás várhatóan ${best.suggestedEnd.replace("T", " ")}-re befejezhető — HATÁRIDŐN BELÜL.`
-        : `FIGYELEM: Határidőn túli kockázat! Befejezés: ${best.suggestedEnd.replace("T", " ")}`,
+        : `FIGYELEM: Határidőn túli kockázat! Befejezés: ${best?.suggestedEnd?.replace("T", " ")}`,
+      ...(best?.warnings?.length ? [`Figyelmeztetések: ${best.warnings.join("; ")}`] : []),
     ].join("\n");
     res.json({ suggestions, analysisText, product, totalMinutesNeeded });
   });
@@ -568,26 +604,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ summary, rows: enriched });
   });
 
-  // ─── AI Auto-Plan ──────────────────────────────────────────────────────────
+  // ─── AI Auto-Plan (okos terheléselosztás) ────────────────────────────────
   app.post("/api/ai/auto-plan", async (req, res) => {
     const user = (req as any).user;
     await storage.clearTasks(user.companyId);
     const orders = await storage.getOrders(user.companyId);
     const machines = await storage.getMachines(user.companyId);
     const products = await storage.getProducts(user.companyId);
+    const existingTasks = await storage.getTasks(user.companyId);
+    const maintenanceLogs = await storage.getMaintenanceLogs(user.companyId);
     const onlineMachines = machines.filter(m => m.status === "online");
-    const priorityOrder = ["urgent", "high", "normal", "low"];
-    const sorted = [...orders].sort((a, b) =>
-      priorityOrder.indexOf(a.priority) - priorityOrder.indexOf(b.priority)
-    );
+    const now = new Date();
+
+    // Rendezés: prioritás + határidő közelség kombinálva
+    const priorityWeight: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+    const sorted = [...orders].sort((a, b) => {
+      const pDiff = (priorityWeight[a.priority] ?? 2) - (priorityWeight[b.priority] ?? 2);
+      if (pDiff !== 0) return pDiff;
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    });
+
+    // Megbízhatósági pontszám minden gépre (karbantartás-előzmény alapján)
+    const machineScores: Record<number, number> = {};
+    for (const m of onlineMachines) {
+      const { reliabilityScore } = computeMachineScore(m, existingTasks, maintenanceLogs);
+      machineScores[m.id] = reliabilityScore;
+    }
+
     const machineEndTimes: Record<number, Date> = {};
     onlineMachines.forEach(m => { machineEndTimes[m.id] = new Date(); });
+
     const newTasks = [];
     for (const order of sorted) {
       const product = products.find(p => p.id === order.productId);
       if (!product) continue;
       const totalMs = product.cycleTimeMinutes * 60 * 1000 * order.quantity;
-      // Termék-gép kompatibilitás figyelembevétele
+
+      // Kompatibilis gépek szűrése
       let eligible = onlineMachines;
       if (product.machineType) {
         const compatible = onlineMachines.filter(m =>
@@ -595,17 +648,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         );
         if (compatible.length > 0) eligible = compatible;
       }
+
+      // Legjobb gép: 70% időbeliség + 30% megbízhatóság
+      const maxEndT = Math.max(...eligible.map(m => machineEndTimes[m.id].getTime()));
+      const minEndT = Math.min(...eligible.map(m => machineEndTimes[m.id].getTime()));
+      const timeRange = maxEndT - minEndT || 1;
+
       let bestMachine = eligible[0];
-      let earliest = machineEndTimes[bestMachine.id];
+      let bestComposite = -Infinity;
       for (const m of eligible) {
-        if (machineEndTimes[m.id] < earliest) {
-          earliest = machineEndTimes[m.id];
+        const endT = machineEndTimes[m.id].getTime();
+        const earlinessScore = 100 - ((endT - minEndT) / timeRange) * 100;
+        const reliability = machineScores[m.id] ?? 50;
+        const composite = earlinessScore * 0.7 + reliability * 0.3;
+        if (composite > bestComposite) {
+          bestComposite = composite;
           bestMachine = m;
         }
       }
+
       const start = new Date(machineEndTimes[bestMachine.id]);
       const end = new Date(start.getTime() + totalMs);
       machineEndTimes[bestMachine.id] = end;
+
+      // Határidő-kockázat figyelmeztetés
+      const dueDate = new Date(order.dueDate);
+      if (end > dueDate) {
+        await storage.createAiSuggestion({
+          type: "warning",
+          title: `Határidő-kockázat: ${order.orderNumber}`,
+          description: `Befejezés (${end.toISOString().slice(0,16).replace("T"," ")}) átlépi a határidőt (${order.dueDate}).`,
+          impact: "high",
+          resolved: false,
+          createdAt: new Date().toISOString(),
+        }, user.companyId);
+      }
+
       const task = await storage.createTask({
         orderId: order.id,
         machineId: bestMachine.id,
@@ -619,6 +697,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       newTasks.push(task);
       await storage.updateOrder(order.id, { status: "planned" });
     }
+
+    // Terheléselosztás összefoglaló
+    const machineLoadSummary = onlineMachines.map(m => {
+      const loadHours = Math.max(0, (machineEndTimes[m.id].getTime() - now.getTime()) / 3600000);
+      return { name: m.name, loadHours, reliability: machineScores[m.id] ?? 50 };
+    });
+    const maxLoad = Math.max(...machineLoadSummary.map(m => m.loadHours), 0.01);
+    const minLoad = Math.min(...machineLoadSummary.map(m => m.loadHours), 0);
+    const balanceScore = Math.round((1 - (maxLoad - minLoad) / maxLoad) * 100);
+    const avgLoad = machineLoadSummary.reduce((s, m) => s + m.loadHours, 0) / (machineLoadSummary.length || 1);
+
+    // Szűk keresztmetszet detektálás
     const highUtil = onlineMachines.filter(m => m.utilization > 85);
     if (highUtil.length > 0) {
       await storage.createAiSuggestion({
@@ -630,10 +720,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         createdAt: new Date().toISOString(),
       }, user.companyId);
     }
-    res.json({ tasks: newTasks, message: "AI ütemezés kész" });
+
+    await storage.createAiSuggestion({
+      type: "info",
+      title: `Auto-terv kész: ${newTasks.length} feladat ütemezve`,
+      description: `Terheléselosztás arány: ${balanceScore}/100. Átlagos gépterhelés: ${avgLoad.toFixed(1)} óra.`,
+      impact: "low",
+      resolved: false,
+      createdAt: new Date().toISOString(),
+    }, user.companyId);
+
+    res.json({ tasks: newTasks, machineLoad: machineLoadSummary, balanceScore, message: "AI ütemezés kész" });
   });
 
-  // ─── Molds ───────────────────────────────────────────────────────────────
+    // ─── Molds ───────────────────────────────────────────────────────────────
   app.get("/api/molds", async (req, res) => {
     const user = (req as any).user;
     res.json(await storage.getMolds(user.companyId));
