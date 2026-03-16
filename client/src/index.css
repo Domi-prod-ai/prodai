@@ -274,3 +274,48 @@ html, body, #root { height: 100%; overflow: hidden; margin: 0; }
 
 /* Table number alignment */
 .tabular-nums { font-variant-numeric: tabular-nums lining-nums; }
+
+/* ── Mobilos extra javítások ───────────────────────────────────────── */
+
+/* Táblázat cellák mobilon ne legyenek túl szűkek */
+@media (max-width: 768px) {
+  /* Rendelések KPI grid 2 oszlop mobilon */
+  .grid.grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Inputok és gombok min 44px magas legyen (Apple HIG) */
+  input, select, textarea, button {
+    min-height: 44px;
+  }
+  /* Kivéve a kis icon gombokat */
+  button.h-7, button.h-8 {
+    min-height: unset;
+  }
+
+  /* Page padding mobilon kisebb */
+  .p-6 {
+    padding: 1rem !important;
+  }
+
+  /* Táblázat fejléc mobilon kisebb szöveg */
+  table th {
+    font-size: 10px !important;
+    padding: 8px 10px !important;
+  }
+  table td {
+    padding: 10px !important;
+    font-size: 12px !important;
+  }
+
+  /* Hamburger gomb ne takarja a tartalmat */
+  .main-scroll > div:first-child {
+    padding-top: 4px;
+  }
+}
+
+/* Sidebar Termeléstervező fix - legyen látható szöveg */
+.sidebar .sidebar-subtitle {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}

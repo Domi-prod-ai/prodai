@@ -99,7 +99,7 @@ export default function Dashboard() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Termelési áttekintés</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">2026. március 15. · Vasárnap</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{new Date().toLocaleDateString("hu-HU", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p>
         </div>
         <button
           onClick={() => autoPlan.mutate()}

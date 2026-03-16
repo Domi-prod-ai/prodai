@@ -4,7 +4,7 @@ import { saveAuth } from "@/lib/auth";
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
 interface Props {
-  onSuccess: () => void;
+  onSuccess: (name?: string, company?: string) => void;
   onGoLogin: () => void;
 }
 
@@ -32,7 +32,7 @@ export default function RegisterPage({ onSuccess, onGoLogin }: Props) {
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Hiba tortent"); return; }
       saveAuth(data.token, data.user, data.company);
-      onSuccess();
+      onSuccess(data.user.name, data.company?.name || companyName);
     } catch {
       setError("Szerver nem elerheto");
     } finally {

@@ -22,6 +22,7 @@ import InviteAcceptPage from "./pages/InviteAcceptPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AdminPage from "./pages/AdminPage";
+import WelcomeModal from "./components/WelcomeModal";
 import NotFound from "./pages/not-found";
 
 const SUPERADMIN_EMAILS = ["fekete0410@gmail.com", "demo@prodai.hu"];
@@ -89,6 +90,8 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [authScreen, setAuthScreen] = useState<AuthScreen>("login");
   const [appScreen, setAppScreen] = useState<AppScreen>("app");
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [welcomeUser, setWelcomeUser] = useState<{ name: string; company: string } | null>(null);
 
   // Meghivo token detektálás a hash URL-ből
   const inviteToken = (() => {
@@ -120,7 +123,16 @@ export default function App() {
     if (authScreen === "register") {
       return (
         <QueryClientProvider client={queryClient}>
-          <RegisterPage onSuccess={() => setLoggedIn(true)} onGoLogin={() => setAuthScreen("login")} />
+          <RegisterPage
+            onSuccess={(name?: string, company?: string) => {
+              setLoggedIn(true);
+              if (name && company) {
+                setWelcomeUser({ name, company });
+                setShowWelcome(true);
+              }
+            }}
+            onGoLogin={() => setAuthScreen("login")}
+          />
         </QueryClientProvider>
       );
     }
@@ -143,6 +155,13 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AppLayout onLogout={handleLogout} onAdmin={() => setAppScreen("admin")} />
       <Toaster />
+      {showWelcome && welcomeUser && (
+        <WelcomeModal
+          userName={welcomeUser.name}
+          companyName={welcomeUser.company}
+          onClose={() => { setShowWelcome(false); setWelcomeUser(null); }}
+        />
+      )}
     </QueryClientProvider>
   );
 }

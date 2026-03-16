@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Áttekintés" },
-  { href: "/import", icon: PackageSearch, label: "Rendelés import", highlight: true },
+  { href: "/import", icon: PackageSearch, label: "Rendelés import" },
   { href: "/gantt", icon: CalendarDays, label: "Gantt ütemterv" },
   { href: "/orders", icon: ClipboardList, label: "Rendelések" },
   { href: "/products", icon: Package, label: "Termékek" },
