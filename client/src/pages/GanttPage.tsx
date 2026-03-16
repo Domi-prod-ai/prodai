@@ -117,7 +117,23 @@ function printGanttPDF(tasks: any[], machines: any[], orders: any[], products: a
       <thead><tr><th>Gép neve</th><th>Típus</th><th>Feladatok</th><th>Összes idő</th><th>Kihasználtság</th></tr></thead>
       <tbody>${machineRows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Nincs gép</td></tr>'}</tbody>
     </table>
-    <div style="text-align:center;color:#94a3b8;font-size:10px;margin-top:32px">Generálva: ProdAI — ${now}</div>
+    <div style="margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <svg width="20" height="20" viewBox="0 0 34 34" fill="none">
+          <polygon points="17,2 30,9.5 30,24.5 17,32 4,24.5 4,9.5" stroke="#0ea5e9" strokeWidth="1.5" fill="rgba(14,165,233,0.08)" />
+          <circle cx="17" cy="17" r="3" fill="#0ea5e9" />
+          <line x1="17" y1="9" x2="17" y2="14" stroke="#0ea5e9" strokeWidth="1.5" />
+          <line x1="17" y1="20" x2="17" y2="25" stroke="#6366f1" strokeWidth="1.5" />
+          <line x1="9" y1="17" x2="14" y2="17" stroke="#0ea5e9" strokeWidth="1.5" />
+          <line x1="20" y1="17" x2="25" y2="17" stroke="#6366f1" strokeWidth="1.5" />
+        </svg>
+        <span style="font-size:11px;font-weight:700;color:#0f172a">ProdAI</span>
+        <span style="font-size:10px;color:#94a3b8">Termeléstervező Platform</span>
+      </div>
+      <div style="font-size:10px;color:#94a3b8">Generálva: ${now} · prodai.hu</div>
+    </div>
+    <!-- Watermark -->
+    <div style="position:fixed;bottom:40px;right:40px;opacity:0.04;font-size:60px;font-weight:900;color:#0ea5e9;transform:rotate(-20deg);pointer-events:none;user-select:none;">ProdAI</div>
   </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 400);

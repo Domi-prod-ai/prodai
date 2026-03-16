@@ -6,7 +6,7 @@ import type { Machine, Order, AiSuggestion } from "@shared/schema";
 
 function KpiCard({ label, value, sub, trend }: { label: string; value: string | number; sub?: string; trend?: "up" | "down" | "flat" }) {
   return (
-    <div className="bg-white border border-border rounded-xl p-4 shadow-sm" data-testid={`kpi-${label}`}>
+    <div className="kpi-card p-4 fade-in" data-testid={`kpi-${label}`}>
       <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wide font-medium">{label}</div>
       <div className="text-2xl font-bold text-foreground tabular-nums count-animate">{value}</div>
       {sub && (
@@ -98,7 +98,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Termelési áttekintés</h1>
+          <h1 className="page-title">Termelési <span className="text-gradient">áttekintés</span></h1>
           <p className="text-sm text-muted-foreground mt-0.5">{new Date().toLocaleDateString("hu-HU", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</p>
         </div>
         <button
